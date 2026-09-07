@@ -146,6 +146,9 @@ def push_to_notion(date_str, sectors, kospi_value, kospi_foreign, kospi_inst,
     }
 
     resp = requests.post(NOTION_API_URL, headers=headers, json=payload)
+    if resp.status_code >= 400:
+        print("Notion API 에러 상세 내용:")
+        print(resp.text)
     resp.raise_for_status()
     print("Notion 페이지 생성 완료:", resp.json().get("id"))
 
