@@ -1,0 +1,29 @@
+# 이 파일은 저장소의 .github/workflows/notion_sync.yml 경로에 넣어야 합니다.
+name: KRX to Notion Sync
+
+on:
+  schedule:
+    # UTC 기준. 한국시간(KST) 15:35 = UTC 06:35
+    - cron: "35 6 * * 1-5"   # 월~금만 실행 (장 마감 후)
+  workflow_dispatch: {}      # 수동 실행 버튼도 함께 활성화
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 패키지 설치
+        run: pip install pykrx requests
+
+      - name: 스크립트 실행
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: python krx_notion_sync.py
