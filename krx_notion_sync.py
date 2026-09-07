@@ -42,10 +42,37 @@ def format_eok(value_won: int) -> str:
     return f"{sign}{eok:,}억"
 
 
-def get_target_date() -> str:
-    """가장 최근 영업일(YYYYMMDD)을 오늘 기준으로 계산"""
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    return stock.get_nearest_business_day_in_a_week(today, prev=True)
+def get_candidate_dates(max_back: int = 10):
+    """
+    오늘부터 최대 max_back일 전까지, 주말을 제외한 날짜(YYYYMMDD) 목록을
+    최신순으로 반환한다. (pykrx의 get_nearest_business_day_in_a_week는
+    KRX 서버 응답이 불안정할 때 자주 오류가 나서 사용하지 않는다.)
+    """
+    dates = []
+    d = datetime.datetime.now()
+    while len(dates) < max_back:
+        if d.weekday() < 5:  # 0=월 ... 4=금, 주말(5,6) 제외
+            dates.append(d.strftime("%Y%m%d"))
+        d -= datetime.timedelta(days=1)
+    return dates
+
+
+def fetch_with_retry(fetch_fn, dates):
+    """
+    dates(최신순) 목록을 하나씩 시도하면서 fetch_fn(date)이 비어있지 않은
+    결과를 낼 때까지 뒤로 물러난다. 공휴일 등으로 데이터가 없는 날은
+    건너뛴다. 성공하면 (date, 결과)를 반환한다.
+    """
+    last_err = None
+    for date in dates:
+        try:
+            result = fetch_fn(date)
+            if result is not None and len(result) > 0:
+                return date, result
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"최근 {len(dates)}일 내에 유효한 데이터를 찾지 못했습니다. 마지막 에러: {last_err}")
 
 
 def get_market_net_value(date: str, market: str) -> str:
@@ -124,11 +151,16 @@ def push_to_notion(date_str, sectors, kospi_value, kospi_foreign, kospi_inst,
 
 
 def main():
-    date = get_target_date()
-    date_str = f"{date[:4]}-{date[4:6]}-{date[6:]}"
     sector_map = load_sector_map()
+    candidate_dates = get_candidate_dates()
 
-    kospi_foreign_top10 = get_top10(date, "KOSPI", "외국인")
+    print(f"시도할 날짜 후보: {candidate_dates}")
+    date, kospi_foreign_top10 = fetch_with_retry(
+        lambda d: get_top10(d, "KOSPI", "외국인"), candidate_dates
+    )
+    print(f"사용할 날짜로 확정: {date}")
+    date_str = f"{date[:4]}-{date[4:6]}-{date[6:]}"
+
     kospi_inst_top10 = get_top10(date, "KOSPI", "기관합계")
     kosdaq_foreign_top10 = get_top10(date, "KOSDAQ", "외국인")
     kosdaq_inst_top10 = get_top10(date, "KOSDAQ", "기관합계")
